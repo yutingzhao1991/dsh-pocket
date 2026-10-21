@@ -68,16 +68,63 @@ test('手机端右边栏默认开启，可关闭并持久化', () => withHome(as
   assert.equal(setMobileRightbarEnabled(true), true, '可再次开启');
 }));
 
-test('局域网地址覆盖：默认自动，设置/清除持久化，非法 IPv4 拒绝', () => withHome(async () => {
+test('局域网主入口：默认自动，设置/清除持久化，IP 与域名都接受，非法条目拒绝', () => withHome(async () => {
   const { lanIpOverride, setLanIpOverride, settingsPath } = await import('../lib/settings.mjs');
   assert.equal(lanIpOverride(), '', '默认自动');
-  assert.equal(setLanIpOverride('100.119.24.44'), '100.119.24.44', '设置成功');
+  assert.equal(setLanIpOverride('100.119.24.44'), '100.119.24.44', '设置 IPv4 成功');
   assert.equal(lanIpOverride(), '100.119.24.44', '立即生效');
-  const raw = JSON.parse(readFileSync(settingsPath(), 'utf8'));
+  let raw = JSON.parse(readFileSync(settingsPath(), 'utf8'));
   assert.equal(raw.lanIpOverride, '100.119.24.44', 'settings.json 内容正确');
-  assert.throws(() => setLanIpOverride('999.1.1.1'), /IPv4/, '非法地址拒绝');
+
+  // issue #79：主入口可自定义内网域名（大小写/尾点归一化）
+  assert.equal(setLanIpOverride('DSH.Dev.Example.COM.'), 'dsh.dev.example.com', '域名归一化后保存');
+  assert.equal(lanIpOverride(), 'dsh.dev.example.com', '域名主入口持久化');
+  assert.equal(setLanIpOverride('[fd00::5]'), 'fd00::5', 'IPv6 去括号');
+  assert.throws(() => setLanIpOverride('[fd00::5]:3081'), /局域网入口/, 'IPv6 带端口拒绝');
+
+  assert.throws(() => setLanIpOverride('999.1.1.1'), /局域网入口/, '非法伪 IPv4 拒绝');
+  assert.throws(() => setLanIpOverride('*.corp.example.com'), /局域网入口/, '通配符拒绝');
+  assert.throws(() => setLanIpOverride('host:3081'), /局域网入口/, '带端口拒绝');
+  assert.throws(() => setLanIpOverride('http://host/path'), /局域网入口/, '带路径拒绝');
+  assert.equal(lanIpOverride(), 'fd00::5', '非法写入不覆盖旧值');
+
   assert.equal(setLanIpOverride(''), '', '清除覆盖');
   assert.equal(lanIpOverride(), '', '恢复自动');
+  raw = JSON.parse(readFileSync(settingsPath(), 'utf8'));
+  assert.equal('lanIpOverride' in raw, false, '清除后删除字段');
+}));
+
+test('局域网其他入口 lanHosts：添加/去重/删除幂等、持久化；setLanHosts 覆盖写入', () => withHome(async () => {
+  const { lanHosts, addLanHost, removeLanHost, setLanHosts, settingsPath } = await import('../lib/settings.mjs');
+  assert.deepEqual(lanHosts(), [], '默认空列表');
+
+  assert.deepEqual(addLanHost('Dsh.Dev.Example.com'), ['dsh.dev.example.com'], '添加域名并归一化');
+  assert.deepEqual(addLanHost('dsh.dev.example.com.'), ['dsh.dev.example.com'], '重复条目幂等');
+  assert.deepEqual(addLanHost('30.174.129.51'), ['dsh.dev.example.com', '30.174.129.51'], '可添加任意网段 IP');
+  assert.deepEqual(lanHosts(), ['dsh.dev.example.com', '30.174.129.51'], '持久化生效');
+  const raw = JSON.parse(readFileSync(settingsPath(), 'utf8'));
+  assert.deepEqual(raw.lanHosts, ['dsh.dev.example.com', '30.174.129.51'], 'settings.json 内容正确');
+
+  assert.deepEqual(removeLanHost('30.174.129.51:3081'), ['dsh.dev.example.com'], '删除时归一化端口');
+  assert.deepEqual(removeLanHost('30.174.129.51'), ['dsh.dev.example.com'], '删除不存在的条目幂等');
+
+  assert.deepEqual(setLanHosts(['A.example.com', 'a.example.com', '10.0.0.7', '']), ['a.example.com', '10.0.0.7'], '覆盖写入并去重/忽略空项');
+  assert.deepEqual(setLanHosts([]), [], '空数组清空白名单');
+  assert.deepEqual(lanHosts(), [], '清空生效');
+}));
+
+test('局域网入口与命名隧道域名互斥（§6.3）：保存时双向拒绝', () => withHome(async () => {
+  const { setTunnelHostname, addLanHost, setLanIpOverride, setLanHosts, lanHosts, tunnelHostname, lanIpOverride } = await import('../lib/settings.mjs');
+  setTunnelHostname('pocket.example.com');
+  assert.throws(() => addLanHost('POCKET.EXAMPLE.COM'), /公网固定隧道|局域网入口/, '加入白名单被拒绝');
+  assert.throws(() => setLanIpOverride('pocket.example.com'), /公网固定隧道|局域网入口/, '设为主入口被拒绝');
+  assert.throws(() => setLanHosts(['pocket.example.com']), /公网固定隧道|局域网入口/, '批量写入被拒绝');
+  assert.deepEqual(lanHosts(), [], '拒绝后没有落盘');
+  assert.equal(lanIpOverride(), '', '主入口未被写入');
+
+  addLanHost('dsh.dev.example.com');
+  assert.throws(() => setTunnelHostname('dsh.dev.example.com'), /局域网入口/, '反向设置隧道域名被拒绝');
+  assert.equal(tunnelHostname(), 'pocket.example.com', '原隧道域名保持不变');
 }));
 
 test('PIN 自定义标记（issue #33）：默认 false，设置/清除持久化，未知类型 false', () => withHome(async () => {

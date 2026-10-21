@@ -1,3 +1,21 @@
+# Unreleased
+
+### Bug Fixes
+
+* **lan:** 局域网访问开关与登录页文案对 `lanIpOverride` 入口一致生效（issue #79）——此前非 RFC1918 的 override（如 30.x）与自定义域名入口会漏过 `lanEnabled=false` 的 403，且明明走局域网密码却显示「此公网地址」
+* **lan:** 公网直连伪造白名单 Host 不再降级成局域网密码/免密：非 RFC1918 入口只信任「白名单本机 IP 所匹配网卡」的直连子网，且可信白名单 Host 不再被 `policyHost()` 换成 30.x 源地址（review P1/P2）
+* **lan:** 白名单里的 loopback 入口（`localhost` / `127.0.0.1`）也受局域网访问总开关约束，关闭时 HTTP/WS 均 403（review P2）
+* **lan:** IPv6 主入口 URL/二维码补方括号；IPv6 条目统一压缩为规范表示后再匹配（review P2）
+* **lan:** 登录失败日志补充 `host` / `class` / `override` 判定依据，便于排查「密码永远错误」
+
+### Features
+
+* **lan:** 局域网入口白名单：`lanHosts` 支持多个 IP / 自定义域名，`lanIpOverride` 放宽为主入口（可域名）；所有 LAN 判定点（密码归属、访问开关、登录页文案、二维码/URL）读同一份白名单；设置页支持主入口自定义域名、其他入口 chips、非私网段提示；新增 `lan.hosts.add` / `lan.hosts.remove` RPC；命名隧道固定域名与白名单双向互斥（issue #79）
+
+### ⚠️ Breaking Changes
+
+* **lan:** 关闭「局域网访问」现在会拦截所有白名单入口（含自定义 IP / 域名）；此前这类 override 入口漏拦。登录页对白名单入口统一显示「此局域网地址」
+
 # [2.12.0](https://github.com/shaobeichen/dsh-pocket/compare/v2.11.0...v2.12.0) (2026-10-17)
 
 

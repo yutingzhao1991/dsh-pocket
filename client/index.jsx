@@ -42,6 +42,9 @@ const styles = {
   btn: { font: 'inherit', cursor: 'pointer', border: '1px solid var(--dsw-alias-button-ghost-active-border, var(--dsw-alias-border-l2,#d1d5db))', background: 'var(--dsw-alias-bg-layer-1,#fff)', color: 'var(--dsw-alias-label-primary,inherit)', height: 36, padding: '0 16px', borderRadius: 999, fontSize: 13, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' },
   qr: { width: 220, height: 220, borderRadius: 10, border: '1px solid var(--dsw-alias-border-l2,#e5e7eb)', margin: '8px 0' },
   warn: { color: 'var(--dsw-alias-state-warn-primary,#b45309)', fontSize: 12, lineHeight: 1.5 },
+  input: { font: 'inherit', height: 30, padding: '0 8px', borderRadius: 8, border: '1px solid var(--dsw-alias-border-l2,#d1d5db)', background: 'var(--dsw-alias-bg-layer-1,#fff)', color: 'var(--dsw-alias-label-primary,inherit)' },
+  chip: { display: 'inline-flex', alignItems: 'center', gap: 2, padding: '2px 4px 2px 8px', borderRadius: 999, border: '1px solid var(--dsw-alias-border-l2,#d1d5db)', background: 'var(--dsw-alias-bg-layer-2,#f3f4f6)', fontSize: 12, fontFamily: 'ui-monospace,Menlo,monospace' },
+  chipRemove: { border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--dsw-alias-label-tertiary,#8b93a1)', fontSize: 14, lineHeight: 1, padding: '0 4px' },
 };
 
 function applyMobileRightbarSetting(enabled) {
@@ -293,10 +296,31 @@ function PocketSettingsTab({ rpcCall, t }) {
     }
   };
 
-  // 局域网地址手动覆盖（Tailscale/VPN 等远程访问场景）：空值恢复自动选择
-  const setLanAddress = async (ip) => {
+  // 局域网入口（issue #79）：主入口可 IP 或自定义域名；其他入口是显式白名单 chips。
+  // 空主入口 = 恢复自动探测；添加/删除后 RPC 返回完整 status（二维码/候选同步刷新）。
+  const [customLanAddress, setCustomLanAddress] = useState(null); // null | 正在编辑的主入口字符串
+  const [newLanHost, setNewLanHost] = useState('');
+  const setLanAddress = async (host) => {
     try {
-      setStatus(await call(POCKET_ENDPOINTS.lanSetOverride, { ip }));
+      setStatus(await call(POCKET_ENDPOINTS.lanSetOverride, { host }));
+      setCustomLanAddress(null);
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+  const addLanHostEntry = async (host) => {
+    const value = String(host ?? '').trim();
+    if (!value) return;
+    try {
+      setStatus(await call(POCKET_ENDPOINTS.lanHostsAdd, { host: value }));
+      setNewLanHost('');
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+  const removeLanHostEntry = async (host) => {
+    try {
+      setStatus(await call(POCKET_ENDPOINTS.lanHostsRemove, { host }));
     } catch (err) {
       setError(err.message);
     }
@@ -341,6 +365,20 @@ function PocketSettingsTab({ rpcCall, t }) {
   const customBtn = (which) => h('button', { style: { ...styles.btn, height: 26, padding: '0 10px', fontSize: 12, marginLeft: 8 }, onClick: () => setCustomPin({ which, value: '', err: null }) }, t('customize'));
 
   const lanUrl = status?.lanUrl;
+  // 局域网入口白名单视图（issue #79）：主入口 + 其他入口 + 非私网段提示
+  const lanHostList = Array.isArray(status?.lanHosts) ? status.lanHosts : [];
+  const primaryLanHost = status?.lanIpOverride || '';
+  const addableLanCandidates = (status?.lanCandidates || [])
+    .filter((host) => host && host !== primaryLanHost && !lanHostList.includes(host));
+  const isIpLiteral = (value) => /^\d{1,3}(?:\.\d{1,3}){3}$/.test(value) || value.includes(':');
+  const isNonPrivateLanHost = (value) => {
+    if (!isIpLiteral(value)) return false; // 域名无法从字符串判断私网/公网
+    const detail = (status?.lanCandidatesDetail || []).find((d) => d.address === value);
+    return detail ? detail.rfc1918 === false : false;
+  };
+  const lanNonPrivateWarn = (value) => (isNonPrivateLanHost(value)
+    ? h('div', { style: { ...styles.warn, marginTop: 4 } }, `⚠️ ${t('lanNonPrivateWarn')}`)
+    : null);
   const tunnelUrl = status?.tunnelUrl;
   const tunnelPhase = tunnelState?.phase ?? 'idle';
   const tunnelStarting = ['downloading', 'starting', 'registering'].includes(tunnelPhase);
@@ -472,16 +510,77 @@ function PocketSettingsTab({ rpcCall, t }) {
               h('button', { style: { border: 'none', background: 'none', font: 'inherit', cursor: 'pointer', fontSize: 12, color: 'var(--dsw-alias-label-tertiary,#8b93a1)', padding: 0 }, onClick: () => setAdvOpen((v) => !v) },
                 (status?.lanIpOverride || t('lanAddressAuto')) + ' ›'),
               advOpen ? h('div', { style: { marginTop: 8 } },
-                h('label', { style: { display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: 'var(--dsw-alias-label-secondary,#6b7280)' } },
+                // 主入口：下拉保留自动/候选；末尾「自定义域名…」输入 IP 或内网域名
+                h('label', { style: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', fontSize: 12, color: 'var(--dsw-alias-label-secondary,#6b7280)' } },
                   t('lanAddress'),
                   h('select', {
-                    value: status?.lanIpOverride || '',
-                    onChange: (e) => setLanAddress(e.target.value),
-                    style: { font: 'inherit', height: 30, padding: '0 8px', borderRadius: 8, border: '1px solid var(--dsw-alias-border-l2,#d1d5db)', background: 'var(--dsw-alias-bg-layer-1,#fff)', color: 'var(--dsw-alias-label-primary,inherit)' },
+                    value: primaryLanHost,
+                    onChange: (e) => {
+                      const value = e.target.value;
+                      if (value === '__custom__') { setCustomLanAddress(primaryLanHost); return; }
+                      setLanAddress(value);
+                    },
+                    style: styles.input,
                   },
                   h('option', { value: '' }, t('lanAddressAuto')),
-                  (status?.lanCandidates || []).map((ip) => h('option', { key: ip, value: ip }, ip)),
+                  (status?.lanCandidates || []).map((host) => h('option', { key: host, value: host }, host)),
+                  h('option', { value: '__custom__' }, t('lanCustomHostOption')),
                   ),
+                ),
+                customLanAddress !== null ? h('div', { style: { marginTop: 8, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' } },
+                  h('input', {
+                    style: { ...styles.input, width: 230, fontFamily: 'ui-monospace,Menlo,monospace' },
+                    placeholder: t('lanCustomHostPlaceholder'),
+                    value: customLanAddress,
+                    autoFocus: true,
+                    onChange: (e) => setCustomLanAddress(e.target.value.trim()),
+                    onKeyDown: (e) => { if (e.key === 'Enter') setLanAddress(customLanAddress); if (e.key === 'Escape') setCustomLanAddress(null); },
+                  }),
+                  h('button', { style: { ...styles.btn, height: 30, padding: '0 12px', fontSize: 12 }, onClick: () => setLanAddress(customLanAddress) }, t('save')),
+                  h('button', { style: { ...styles.btn, height: 30, padding: '0 12px', fontSize: 12 }, onClick: () => setCustomLanAddress(null) }, t('cancel')),
+                ) : null,
+                primaryLanHost ? lanNonPrivateWarn(primaryLanHost) : null,
+
+                // 其他入口：显式白名单 chips + 添加（候选下拉或手输域名）
+                h('div', { style: { marginTop: 14, borderTop: '1px solid var(--dsw-alias-border-l2,#e5e7eb)', paddingTop: 10 } },
+                  h('div', { style: { fontWeight: 600, fontSize: 12 } }, t('lanHostsTitle')),
+                  h('div', { style: { ...styles.muted, marginTop: 4 } }, t('lanHostsHint')),
+                  lanHostList.length
+                    ? h('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 } },
+                      lanHostList.map((host) => h('span', { key: host, style: styles.chip },
+                        h('span', null, host),
+                        h('button', {
+                          style: styles.chipRemove,
+                          title: t('lanHostRemove'),
+                          'aria-label': `${t('lanHostRemove')} ${host}`,
+                          onClick: () => removeLanHostEntry(host),
+                        }, '×'),
+                      )))
+                    : null,
+                  lanHostList.filter((host) => isNonPrivateLanHost(host)).map((host) => h('div', { key: `warn-${host}`, style: { ...styles.warn, marginTop: 4 } },
+                    `⚠️ ${host}：${t('lanNonPrivateWarn')}`)),
+                  h('div', { style: { display: 'flex', alignItems: 'center', gap: 6, marginTop: 8, flexWrap: 'wrap' } },
+                    h('input', {
+                      style: { ...styles.input, width: 210, fontFamily: 'ui-monospace,Menlo,monospace' },
+                      placeholder: t('lanHostInputPlaceholder'),
+                      value: newLanHost,
+                      onChange: (e) => setNewLanHost(e.target.value.trim()),
+                      onKeyDown: (e) => { if (e.key === 'Enter') addLanHostEntry(newLanHost); },
+                    }),
+                    h('button', {
+                      style: { ...styles.btn, height: 30, padding: '0 12px', fontSize: 12 },
+                      disabled: !newLanHost,
+                      onClick: () => addLanHostEntry(newLanHost),
+                    }, t('lanHostAdd')),
+                  ),
+                  addableLanCandidates.length ? h('select', {
+                    value: '',
+                    onChange: (e) => { if (e.target.value) addLanHostEntry(e.target.value); },
+                    style: { ...styles.input, marginTop: 6, fontSize: 12 },
+                  },
+                  h('option', { value: '' }, t('lanHostPick')),
+                  addableLanCandidates.map((host) => h('option', { key: host, value: host }, host)),
+                  ) : null,
                 ),
               ) : null),
           )
