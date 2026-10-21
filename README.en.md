@@ -85,13 +85,19 @@ npx @deepseek-ai/dsh web
 
 Settings → **Phone access** → scan the "📶 LAN" QR code → enter the **LAN PIN** (shown in the LAN block; hit **Refresh** to roll a new one, or **Customize** to set an 8–64-character alphanumeric PIN) → the phone opens the exact same DSH, in real time.
 
-> The "**LAN access**" switch is **on by default** and can be **turned off/on with one click** (a confirmation dialog shows each time). Off kills the LAN QR code and link instantly (phones can't open them); **public access is unaffected**. Tap "On" to restore it.
+> The "**LAN access**" switch is **on by default** and can be **turned off/on with one click** (a confirmation dialog shows each time). Off kills the LAN QR code and link instantly and **denies every allowlisted entry (including custom IPs / hostnames)**; **public access is unaffected**. Tap "On" to restore it.
 >
 > The LAN PIN is **on by default** (security-first). If you're the only user and find typing it every time annoying, flip "LAN access PIN" to **Off** in the LAN block — LAN scans then connect directly with no PIN (LAN-only devices; the **public tunnel always requires a PIN**, unaffected).
 >
 > After logging in once, the phone **won't ask again**: as long as the computer's dsh web keeps running, reopening the phone needs no PIN (**a dsh web restart/update asks for it once more**).
 >
-> Advanced option: auto-detection may not pick a reachable address for Tailscale/VPN setups. You can select a detected IP from the "LAN address" dropdown; normally no change is needed.
+> Advanced option · **LAN entry allowlist**: auto-detection may pick the wrong address on Tailscale/VPN, on corporate non-RFC1918 ranges (e.g. 30.0.0.0/8), or when you reach the machine through a custom internal DNS name. Under "Advanced · LAN entries" you can:
+> - **Primary address**: pick a detected IP from the dropdown, or choose "Custom hostname…" and enter an IP / internal hostname (used by the QR code and URL);
+> - **Additional entries**: add multiple IPs / hostnames one by one, remove each with ×.
+>
+> Adding an entry = you declare it is **reachable only from your LAN** (the plugin cannot verify reachability). It then uses the LAN PIN and the LAN access switch; **anything not listed is still treated as public** (fail-closed, public PIN required). Entries cannot contain ports/paths/wildcards; the named-tunnel hostname cannot also be a LAN entry. The allowlist is written only by the local settings page/RPC — never extended by request headers. Entries outside RFC1918 (e.g. 30.x) show a warning to confirm they are unreachable from the internet; on a non-RFC1918 network, also add the **machine IP** (as the primary entry) — the plugin only trusts the directly-connected subnet of the local interface that actually owns that IP, so a forged Host from the internet cannot downgrade it.
+>
+> Behavior change: turning LAN access off now blocks **all** allowlisted entries (previously 30.x / hostname overrides could slip past the switch).
 
 ### Public (from anywhere)
 
@@ -118,7 +124,10 @@ Note: in named-tunnel mode the public PIN is **not auto-rotated** (the address i
 - Phone login state is tied to the computer's dsh web process: **no re-entry while dsh web stays up; one re-entry after a restart/update**.
 - **Login rate limiting** (anti brute-force): **5** consecutive wrong PINs from the same IP lock it for **60s**; a global failure threshold briefly locks everyone (blocks distributed IP-rotation scans); a successful login resets the counter.
 - The public URL is randomly assigned by cloudflared and **changes on every restart** (old links die automatically — a natural key rotation); in **named-tunnel fixed-hostname** mode the address stays and the PIN is not auto-rotated — manage it with a custom PIN.
-- **Public detection is fail-closed** (issue #66): everything except loopback and private LAN addresses is treated as **public and PIN-gated** — including any self-hosted tunnel / reverse proxy pointing at the local port with its own hostname. There is no "change the domain to bypass the PIN" hole.
+- **Public detection is fail-closed** (issue #66): everything except loopback, private LAN addresses, and **explicitly allowlisted entries** is treated as **public and PIN-gated** — including any self-hosted tunnel / reverse proxy pointing at the local port with its own hostname. There is no "change the domain to bypass the PIN" hole.
+- **The LAN entry allowlist is explicit** (issue #79): only the local settings page/RPC can write it, never request headers/parameters; no wildcards (so `*.corp.example.com` plus DNS rebinding cannot downgrade a public entry); the named-tunnel hostname is rejected in both directions (otherwise cloudflared's loopback request would carry that Host, match the allowlist, and silently downgrade the public entry to the LAN PIN).
+- **Non-RFC1918 entries cannot be downgraded by a forged Host from the internet**: an entry such as 30.x is trusted only when the **machine IP is also allowlisted and matches a local interface**; only that interface's directly-connected subnet is trusted. A public direct connection is still treated as public (public PIN required), even if it spoofs an allowlisted Host. A domain-only allowlist on a non-RFC1918 network is fail-closed for such sources.
+- **Allowlisted loopback entries obey the LAN switch**: if you explicitly add `localhost` / `127.0.0.1` to the allowlist, turning LAN access off also returns 403 for them; unlisted loopback (including cloudflared's callback) keeps the original behavior.
 - LAN mode exposes nothing publicly; only devices on the same network can reach it.
 - Built for personal use; the public PIN lives in `$DSH_HOME/dsh-pocket/token` (re-rolled per tunnel start unless customized), the LAN PIN in `$DSH_HOME/dsh-pocket/token-lan` (refreshed manually in Settings), and switches/custom flags in `$DSH_HOME/dsh-pocket/settings.json`.
 
@@ -186,9 +195,9 @@ Such tools take over all traffic and often cut cloudflared's tunnel-edge connect
 | File                 | Purpose                                                                                                                                                                                                                      |
 | -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `lib/index.js`       | Plugin entry: auto-start proxy + register RPC + access-PIN management (public: 8 digits rotated per tunnel start; LAN: separate 8 digits, manually refreshable / switchable) + LAN access switch + DSH Desktop detection     |
-| `lib/settings.mjs`   | Settings persistence: LAN access switch (on by default) + LAN-PIN switch (on by default) stored in `$DSH_HOME/dsh-pocket/settings.json`                                                                                      |
-| `lib/service.mjs`    | Service: proxy lifecycle (port auto-fallback), public tunnel (auto-restore), status snapshot (with QR data URLs)                                                                                                             |
-| `lib/proxy.mjs`      | Header-rewriting reverse proxy: Host/Origin → loopback, HTTP + WebSocket passthrough + polyfill injection + gzip/brotli compression + per-host token auth (public always; LAN per switch) + blocks LAN Hosts when LAN is off |
+| `lib/settings.mjs`   | Settings persistence: LAN access switch, LAN-PIN switch, LAN entry allowlist (`lanIpOverride` / `lanHosts`) in `$DSH_HOME/dsh-pocket/settings.json`                                                                            |
+| `lib/service.mjs`    | Service: proxy lifecycle (port auto-fallback), public tunnel (auto-restore), status snapshot (QR data URLs + LAN candidates / allowlist details)                                                                              |
+| `lib/proxy.mjs`      | Header-rewriting reverse proxy: Host/Origin → loopback, HTTP + WebSocket passthrough + polyfill injection + gzip/brotli compression + per-host token auth (public always; LAN/allowlist per switch) + blocks LAN Hosts when LAN is off |
 | `lib/tunnel.mjs`     | cloudflared: multi-mirror download (Tsinghua first) / adaptive parallel / start / parse public URL (HTTP/2)                                                                                                                  |
 | `lib/web-rpc.js`     | Loopback RPC: `status` / `tunnel.start` / `tunnel.stop` / `lan.setEnabled` / `version` / `update` / `restart`                                                                                                                |
 | `client/`            | "Phone access" settings tab + mobile adaptation (dsh-web-mobile port)                                                                                                                                                        |

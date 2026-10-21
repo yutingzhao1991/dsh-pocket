@@ -64,6 +64,8 @@ var POCKET_ENDPOINTS = Object.freeze({
   lanTokenRefresh: "token.lanRefresh",
   lanAuthSetEnabled: "lanAuth.setEnabled",
   lanSetOverride: "lan.setOverride",
+  lanHostsAdd: "lan.hosts.add",
+  lanHostsRemove: "lan.hosts.remove",
   lanSetEnabled: "lan.setEnabled",
   mobileRightbarSetEnabled: "mobile.rightbar.setEnabled",
   pinSetCustom: "pin.setCustom",
@@ -108,7 +110,9 @@ function redactStatus(s) {
     lanUrl: s?.lanUrl ?? null,
     lanQr: s?.lanQr ?? null,
     lanCandidates: Array.isArray(s?.lanCandidates) ? s.lanCandidates : [],
+    lanCandidatesDetail: Array.isArray(s?.lanCandidatesDetail) ? s.lanCandidatesDetail : [],
     lanIpOverride: s?.lanIpOverride ?? "",
+    lanHosts: Array.isArray(s?.lanHosts) ? s.lanHosts : [],
     tunnelRunning: s?.tunnelRunning === true,
     tunnelUrl: s?.tunnelUrl ?? null,
     tunnelQr: s?.tunnelQr ?? null,
@@ -2007,7 +2011,18 @@ var zh2 = {
   "wanAccess": "\u516C\u7F51\u8BBF\u95EE",
   "pinLabel": "\u8BBF\u95EE\u5BC6\u7801",
   "modeLabel": "\u5730\u5740\u6A21\u5F0F",
-  "advAddress": "\u9AD8\u7EA7 \xB7 \u624B\u52A8\u9009\u5730\u5740",
+  "advAddress": "\u9AD8\u7EA7 \xB7 \u5C40\u57DF\u7F51\u5165\u53E3",
+  "lanAddress": "\u4E3B\u5165\u53E3\u5730\u5740",
+  "lanAddressAuto": "\u81EA\u52A8\uFF08\u63A8\u8350\uFF09",
+  "lanCustomHostOption": "\u81EA\u5B9A\u4E49\u57DF\u540D\u2026",
+  "lanCustomHostPlaceholder": "dsh.dev.example.com \u6216 30.174.129.51",
+  "lanHostsTitle": "\u5176\u4ED6\u5165\u53E3",
+  "lanHostsHint": "\u52A0\u5165\u767D\u540D\u5355\u7684\u5165\u53E3\u6309\u5C40\u57DF\u7F51\u5BC6\u7801\u548C\u5C40\u57DF\u7F51\u5F00\u5173\u5904\u7406\uFF1B\u672A\u52A0\u5165\u7684\u4ECD\u6309\u516C\u7F51\u5904\u7406\uFF08\u9700\u516C\u7F51\u5BC6\u7801\uFF09\u3002",
+  "lanHostAdd": "\u6DFB\u52A0",
+  "lanHostInputPlaceholder": "\u8F93\u5165 IP \u6216\u57DF\u540D\uFF08\u4E0D\u542B\u7AEF\u53E3/\u8DEF\u5F84\uFF09",
+  "lanHostPick": "\u4ECE\u5019\u9009\u5730\u5740\u6DFB\u52A0\u2026",
+  "lanHostRemove": "\u79FB\u9664",
+  "lanNonPrivateWarn": "\u8BE5\u5730\u5740\u4E0D\u5728\u79C1\u7F51\u6BB5\uFF0C\u8BF7\u786E\u8BA4\u5916\u7F51\u65E0\u6CD5\u8BBF\u95EE\u540E\u518D\u52A0\u5165",
   "wanOffHint": "\u5F00\u542F\u540E\u53EF\u4ECE\u4EFB\u4F55\u7F51\u7EDC\u8BBF\u95EE\uFF08\u6BCF\u6B21\u5F00\u542F\u9700\u786E\u8BA4\u514D\u8D23\u58F0\u660E\uFF09",
   "resetFactory": "\u{1F9F9} \u6062\u590D\u51FA\u5382\u8BBE\u7F6E",
   "resetGo": "\u6062\u590D",
@@ -2020,14 +2035,12 @@ var zh2 = {
   "lanTitle": "\u{1F4F6} \u5C40\u57DF\u7F51\uFF08\u540C\u4E00 WiFi\uFF09",
   "lanHint": "\u624B\u673A\u8FDE\u63A5\u540C\u4E00 WiFi \u540E\u626B\u7801\u5373\u53EF\u6253\u5F00",
   "lanAccess": "\u5C40\u57DF\u7F51\u8BBF\u95EE",
-  "lanDisabledHint": "\u{1F512} \u5C40\u57DF\u7F51\u8BBF\u95EE\u5DF2\u5173\u95ED\uFF1A\u624B\u673A\u626B\u7801/\u94FE\u63A5\u5747\u4E0D\u53EF\u7528\uFF08\u516C\u7F51\u4E0D\u53D7\u5F71\u54CD\uFF09\u3002\u70B9\u300C\u5F00\u300D\u6062\u590D\u3002",
+  "lanDisabledHint": "\u{1F512} \u5C40\u57DF\u7F51\u8BBF\u95EE\u5DF2\u5173\u95ED\uFF1A\u5DF2\u52A0\u5165\u7684\u5165\u53E3\uFF08\u542B\u81EA\u5B9A\u4E49 IP / \u57DF\u540D\uFF09\u90FD\u4F1A\u62D2\u7EDD\u8BBF\u95EE\uFF0C\u516C\u7F51\u4E0D\u53D7\u5F71\u54CD\u3002\u70B9\u300C\u5F00\u300D\u6062\u590D\u3002",
   "lanToggleTitleOff": "\u5173\u95ED\u5C40\u57DF\u7F51\u8BBF\u95EE",
-  "lanToggleBodyOff": "\u5173\u95ED\u540E\uFF0C\u540C\u4E00 WiFi \u4E0B\u7684\u624B\u673A\u5C06\u65E0\u6CD5\u626B\u7801\u8BBF\u95EE\uFF08\u5C40\u57DF\u7F51\u4E8C\u7EF4\u7801/\u94FE\u63A5\u7ACB\u5373\u5931\u6548\uFF09\u3002\u516C\u7F51\u8BBF\u95EE\u4E0D\u53D7\u5F71\u54CD\u3002\u786E\u5B9A\u5173\u95ED\uFF1F",
+  "lanToggleBodyOff": "\u5173\u95ED\u540E\uFF0C\u5C40\u57DF\u7F51\u4E8C\u7EF4\u7801/\u94FE\u63A5\u7ACB\u5373\u5931\u6548\uFF1B\u5DF2\u52A0\u5165\u767D\u540D\u5355\u7684\u6240\u6709\u5165\u53E3\uFF08\u542B\u81EA\u5B9A\u4E49 IP / \u57DF\u540D\uFF09\u90FD\u4F1A\u62D2\u7EDD\u8BBF\u95EE\u3002\u516C\u7F51\u8BBF\u95EE\u4E0D\u53D7\u5F71\u54CD\u3002\u786E\u5B9A\u5173\u95ED\uFF1F",
   "lanToggleTitleOn": "\u5F00\u542F\u5C40\u57DF\u7F51\u8BBF\u95EE",
   "lanToggleBodyOn": "\u5F00\u542F\u540E\uFF0C\u540C\u4E00 WiFi \u7684\u624B\u673A\u626B\u7801\u5373\u53EF\u8BBF\u95EE\uFF08\u9ED8\u8BA4\u9700\u8F93\u5165\u5C40\u57DF\u7F51\u5BC6\u7801\uFF09\u3002\u786E\u5B9A\u5F00\u542F\uFF1F",
   "confirm": "\u786E\u5B9A",
-  "lanAddress": "\u5C40\u57DF\u7F51\u5730\u5740",
-  "lanAddressAuto": "\u81EA\u52A8\uFF08\u63A8\u8350\uFF09",
   "lanPin": "\u5C40\u57DF\u7F51\u8BBF\u95EE\u5BC6\u7801",
   "on": "\u5F00",
   "off": "\u5173",
@@ -2105,7 +2118,7 @@ var en2 = {
   "wanAccess": "Public access",
   "pinLabel": "Access PIN",
   "modeLabel": "Address mode",
-  "advAddress": "Advanced \xB7 Pick address",
+  "advAddress": "Advanced \xB7 LAN entries",
   "wanOffHint": "Reachable from any network once enabled (a disclaimer is confirmed on each enable)",
   "resetFactory": "\u{1F9F9} Factory reset",
   "resetGo": "Reset",
@@ -2118,14 +2131,23 @@ var en2 = {
   "lanTitle": "\u{1F4F6} LAN (same Wi-Fi)",
   "lanHint": "Scan to open once your phone is on the same Wi-Fi",
   "lanAccess": "LAN access",
-  "lanDisabledHint": '\u{1F512} LAN access is off \u2014 the QR code and link are unavailable (public access is unaffected). Tap "On" to restore.',
+  "lanDisabledHint": '\u{1F512} LAN access is off \u2014 every allowlisted entry (including custom IPs / hostnames) is denied; public access is unaffected. Tap "On" to restore.',
   "lanToggleTitleOff": "Turn off LAN access",
-  "lanToggleBodyOff": "Once off, phones on the same Wi-Fi can no longer scan to connect (the LAN QR code and link stop working immediately). Public access is unaffected. Turn it off?",
+  "lanToggleBodyOff": "Once off, the LAN QR code and link stop working immediately, and every allowlisted entry (including custom IPs / hostnames) is denied. Public access is unaffected. Turn it off?",
   "lanToggleTitleOn": "Turn on LAN access",
   "lanToggleBodyOn": "Once on, phones on the same Wi-Fi can scan to connect (a LAN PIN is required by default). Turn it on?",
   "confirm": "Confirm",
-  "lanAddress": "LAN address",
+  "lanAddress": "Primary address",
   "lanAddressAuto": "Auto (recommended)",
+  "lanCustomHostOption": "Custom hostname\u2026",
+  "lanCustomHostPlaceholder": "dsh.dev.example.com or 30.174.129.51",
+  "lanHostsTitle": "Additional entries",
+  "lanHostsHint": "Allowlisted entries use the LAN PIN and LAN switch; anything not listed is still treated as public (public PIN required).",
+  "lanHostAdd": "Add",
+  "lanHostInputPlaceholder": "IP or hostname (no port/path)",
+  "lanHostPick": "Add from candidates\u2026",
+  "lanHostRemove": "Remove",
+  "lanNonPrivateWarn": "This address is not in a private range \u2014 confirm it is unreachable from the internet before adding it.",
   "lanPin": "LAN access PIN",
   "on": "On",
   "off": "Off",
@@ -2198,7 +2220,10 @@ var styles = {
   // 次级按钮：官方 outline/ghost 胶囊形
   btn: { font: "inherit", cursor: "pointer", border: "1px solid var(--dsw-alias-button-ghost-active-border, var(--dsw-alias-border-l2,#d1d5db))", background: "var(--dsw-alias-bg-layer-1,#fff)", color: "var(--dsw-alias-label-primary,inherit)", height: 36, padding: "0 16px", borderRadius: 999, fontSize: 13, display: "inline-flex", alignItems: "center", justifyContent: "center" },
   qr: { width: 220, height: 220, borderRadius: 10, border: "1px solid var(--dsw-alias-border-l2,#e5e7eb)", margin: "8px 0" },
-  warn: { color: "var(--dsw-alias-state-warn-primary,#b45309)", fontSize: 12, lineHeight: 1.5 }
+  warn: { color: "var(--dsw-alias-state-warn-primary,#b45309)", fontSize: 12, lineHeight: 1.5 },
+  input: { font: "inherit", height: 30, padding: "0 8px", borderRadius: 8, border: "1px solid var(--dsw-alias-border-l2,#d1d5db)", background: "var(--dsw-alias-bg-layer-1,#fff)", color: "var(--dsw-alias-label-primary,inherit)" },
+  chip: { display: "inline-flex", alignItems: "center", gap: 2, padding: "2px 4px 2px 8px", borderRadius: 999, border: "1px solid var(--dsw-alias-border-l2,#d1d5db)", background: "var(--dsw-alias-bg-layer-2,#f3f4f6)", fontSize: 12, fontFamily: "ui-monospace,Menlo,monospace" },
+  chipRemove: { border: "none", background: "transparent", cursor: "pointer", color: "var(--dsw-alias-label-tertiary,#8b93a1)", fontSize: 14, lineHeight: 1, padding: "0 4px" }
 };
 function applyMobileRightbarSetting(enabled) {
   const on = enabled !== false;
@@ -2426,9 +2451,29 @@ function PocketSettingsTab({ rpcCall, t }) {
       setError(err.message);
     }
   };
-  const setLanAddress = async (ip) => {
+  const [customLanAddress, setCustomLanAddress] = (0, import_react2.useState)(null);
+  const [newLanHost, setNewLanHost] = (0, import_react2.useState)("");
+  const setLanAddress = async (host) => {
     try {
-      setStatus(await call(POCKET_ENDPOINTS.lanSetOverride, { ip }));
+      setStatus(await call(POCKET_ENDPOINTS.lanSetOverride, { host }));
+      setCustomLanAddress(null);
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+  const addLanHostEntry = async (host) => {
+    const value = String(host ?? "").trim();
+    if (!value) return;
+    try {
+      setStatus(await call(POCKET_ENDPOINTS.lanHostsAdd, { host: value }));
+      setNewLanHost("");
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+  const removeLanHostEntry = async (host) => {
+    try {
+      setStatus(await call(POCKET_ENDPOINTS.lanHostsRemove, { host }));
     } catch (err) {
       setError(err.message);
     }
@@ -2472,6 +2517,16 @@ function PocketSettingsTab({ rpcCall, t }) {
   );
   const customBtn = (which) => (0, import_react2.createElement)("button", { style: { ...styles.btn, height: 26, padding: "0 10px", fontSize: 12, marginLeft: 8 }, onClick: () => setCustomPin({ which, value: "", err: null }) }, t("customize"));
   const lanUrl = status?.lanUrl;
+  const lanHostList = Array.isArray(status?.lanHosts) ? status.lanHosts : [];
+  const primaryLanHost = status?.lanIpOverride || "";
+  const addableLanCandidates = (status?.lanCandidates || []).filter((host) => host && host !== primaryLanHost && !lanHostList.includes(host));
+  const isIpLiteral = (value) => /^\d{1,3}(?:\.\d{1,3}){3}$/.test(value) || value.includes(":");
+  const isNonPrivateLanHost = (value) => {
+    if (!isIpLiteral(value)) return false;
+    const detail = (status?.lanCandidatesDetail || []).find((d) => d.address === value);
+    return detail ? detail.rfc1918 === false : false;
+  };
+  const lanNonPrivateWarn = (value) => isNonPrivateLanHost(value) ? (0, import_react2.createElement)("div", { style: { ...styles.warn, marginTop: 4 } }, `\u26A0\uFE0F ${t("lanNonPrivateWarn")}`) : null;
   const tunnelUrl = status?.tunnelUrl;
   const tunnelPhase = tunnelState?.phase ?? "idle";
   const tunnelStarting = ["downloading", "starting", "registering"].includes(tunnelPhase);
@@ -2624,20 +2679,104 @@ function PocketSettingsTab({ rpcCall, t }) {
           advOpen ? (0, import_react2.createElement)(
             "div",
             { style: { marginTop: 8 } },
+            // 主入口：下拉保留自动/候选；末尾「自定义域名…」输入 IP 或内网域名
             (0, import_react2.createElement)(
               "label",
-              { style: { display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "var(--dsw-alias-label-secondary,#6b7280)" } },
+              { style: { display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", fontSize: 12, color: "var(--dsw-alias-label-secondary,#6b7280)" } },
               t("lanAddress"),
               (0, import_react2.createElement)(
                 "select",
                 {
-                  value: status?.lanIpOverride || "",
-                  onChange: (e) => setLanAddress(e.target.value),
-                  style: { font: "inherit", height: 30, padding: "0 8px", borderRadius: 8, border: "1px solid var(--dsw-alias-border-l2,#d1d5db)", background: "var(--dsw-alias-bg-layer-1,#fff)", color: "var(--dsw-alias-label-primary,inherit)" }
+                  value: primaryLanHost,
+                  onChange: (e) => {
+                    const value = e.target.value;
+                    if (value === "__custom__") {
+                      setCustomLanAddress(primaryLanHost);
+                      return;
+                    }
+                    setLanAddress(value);
+                  },
+                  style: styles.input
                 },
                 (0, import_react2.createElement)("option", { value: "" }, t("lanAddressAuto")),
-                (status?.lanCandidates || []).map((ip) => (0, import_react2.createElement)("option", { key: ip, value: ip }, ip))
+                (status?.lanCandidates || []).map((host) => (0, import_react2.createElement)("option", { key: host, value: host }, host)),
+                (0, import_react2.createElement)("option", { value: "__custom__" }, t("lanCustomHostOption"))
               )
+            ),
+            customLanAddress !== null ? (0, import_react2.createElement)(
+              "div",
+              { style: { marginTop: 8, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" } },
+              (0, import_react2.createElement)("input", {
+                style: { ...styles.input, width: 230, fontFamily: "ui-monospace,Menlo,monospace" },
+                placeholder: t("lanCustomHostPlaceholder"),
+                value: customLanAddress,
+                autoFocus: true,
+                onChange: (e) => setCustomLanAddress(e.target.value.trim()),
+                onKeyDown: (e) => {
+                  if (e.key === "Enter") setLanAddress(customLanAddress);
+                  if (e.key === "Escape") setCustomLanAddress(null);
+                }
+              }),
+              (0, import_react2.createElement)("button", { style: { ...styles.btn, height: 30, padding: "0 12px", fontSize: 12 }, onClick: () => setLanAddress(customLanAddress) }, t("save")),
+              (0, import_react2.createElement)("button", { style: { ...styles.btn, height: 30, padding: "0 12px", fontSize: 12 }, onClick: () => setCustomLanAddress(null) }, t("cancel"))
+            ) : null,
+            primaryLanHost ? lanNonPrivateWarn(primaryLanHost) : null,
+            // 其他入口：显式白名单 chips + 添加（候选下拉或手输域名）
+            (0, import_react2.createElement)(
+              "div",
+              { style: { marginTop: 14, borderTop: "1px solid var(--dsw-alias-border-l2,#e5e7eb)", paddingTop: 10 } },
+              (0, import_react2.createElement)("div", { style: { fontWeight: 600, fontSize: 12 } }, t("lanHostsTitle")),
+              (0, import_react2.createElement)("div", { style: { ...styles.muted, marginTop: 4 } }, t("lanHostsHint")),
+              lanHostList.length ? (0, import_react2.createElement)(
+                "div",
+                { style: { display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 } },
+                lanHostList.map((host) => (0, import_react2.createElement)(
+                  "span",
+                  { key: host, style: styles.chip },
+                  (0, import_react2.createElement)("span", null, host),
+                  (0, import_react2.createElement)("button", {
+                    style: styles.chipRemove,
+                    title: t("lanHostRemove"),
+                    "aria-label": `${t("lanHostRemove")} ${host}`,
+                    onClick: () => removeLanHostEntry(host)
+                  }, "\xD7")
+                ))
+              ) : null,
+              lanHostList.filter((host) => isNonPrivateLanHost(host)).map((host) => (0, import_react2.createElement)(
+                "div",
+                { key: `warn-${host}`, style: { ...styles.warn, marginTop: 4 } },
+                `\u26A0\uFE0F ${host}\uFF1A${t("lanNonPrivateWarn")}`
+              )),
+              (0, import_react2.createElement)(
+                "div",
+                { style: { display: "flex", alignItems: "center", gap: 6, marginTop: 8, flexWrap: "wrap" } },
+                (0, import_react2.createElement)("input", {
+                  style: { ...styles.input, width: 210, fontFamily: "ui-monospace,Menlo,monospace" },
+                  placeholder: t("lanHostInputPlaceholder"),
+                  value: newLanHost,
+                  onChange: (e) => setNewLanHost(e.target.value.trim()),
+                  onKeyDown: (e) => {
+                    if (e.key === "Enter") addLanHostEntry(newLanHost);
+                  }
+                }),
+                (0, import_react2.createElement)("button", {
+                  style: { ...styles.btn, height: 30, padding: "0 12px", fontSize: 12 },
+                  disabled: !newLanHost,
+                  onClick: () => addLanHostEntry(newLanHost)
+                }, t("lanHostAdd"))
+              ),
+              addableLanCandidates.length ? (0, import_react2.createElement)(
+                "select",
+                {
+                  value: "",
+                  onChange: (e) => {
+                    if (e.target.value) addLanHostEntry(e.target.value);
+                  },
+                  style: { ...styles.input, marginTop: 6, fontSize: 12 }
+                },
+                (0, import_react2.createElement)("option", { value: "" }, t("lanHostPick")),
+                addableLanCandidates.map((host) => (0, import_react2.createElement)("option", { key: host, value: host }, host))
+              ) : null
             )
           ) : null
         )

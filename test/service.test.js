@@ -147,10 +147,60 @@ test('service：lanIpOverride 优先于自动选择，status 返回候选地址'
   assert.equal(st.lanUrl, 'http://100.119.24.44:3081', '手动覆盖优先');
   assert.equal(st.lanIpOverride, '100.119.24.44', '状态返回当前覆盖');
 
-  override = 'not-an-ip';
+  override = '*.bad.example.com';
   st = await service.status();
   assert.equal(st.lanUrl, 'http://192.168.1.50:3081', '非法覆盖被忽略，回退自动选择');
   assert.equal(st.lanIpOverride, '', '非法覆盖不进入状态');
+
+  await service.dispose();
+});
+
+test('service（issue #79）：主入口可为域名；白名单合并进 lanCandidates 并带 detail', async () => {
+  const internals = stubInternals();
+  const service = createPocketService({
+    dshPort: 3080,
+    port: 3081,
+    internals,
+    getLanIpOverride: () => 'DSH.Dev.Example.com',
+    getLanHosts: () => ['30.174.129.51', 'dsh.dev.example.com', '10.example.com', 'bad entry'],
+  });
+  await service.startProxy();
+
+  const st = await service.status();
+  assert.equal(st.lanUrl, 'http://dsh.dev.example.com:3081', '二维码/URL 使用域名主入口');
+  assert.equal(st.lanIpOverride, 'dsh.dev.example.com', '主入口归一化');
+  assert.deepEqual(st.lanHosts, ['30.174.129.51', 'dsh.dev.example.com', '10.example.com'], '其他入口归一化并忽略坏条目');
+  assert.deepEqual(
+    st.lanCandidates,
+    ['192.168.1.50', '100.119.24.44', 'dsh.dev.example.com', '30.174.129.51', '10.example.com'],
+    '本机候选 + 白名单（去重）',
+  );
+  const byAddress = Object.fromEntries(st.lanCandidatesDetail.map((d) => [d.address, d]));
+  assert.equal(byAddress['192.168.1.50'].rfc1918, true, 'RFC1918 标记');
+  assert.equal(byAddress['100.119.24.44'].rfc1918, false, 'CGNAT 不算 RFC1918');
+  assert.equal(byAddress['30.174.129.51'].iface, 'whitelist', '白名单新增项标注来源');
+  assert.equal(byAddress['30.174.129.51'].rfc1918, false, '非私网段标记');
+  assert.equal(byAddress['dsh.dev.example.com'].rfc1918, false, '域名不是 RFC1918 地址');
+  assert.equal(byAddress['10.example.com'].rfc1918, false, '以 10. 开头的域名不能误判为 RFC1918');
+
+  await service.dispose();
+});
+
+
+test('service（review P2）：IPv6 主入口的 URL/二维码地址必须带方括号', async () => {
+  const internals = stubInternals();
+  const service = createPocketService({
+    dshPort: 3080,
+    port: 3081,
+    internals,
+    getLanIpOverride: () => '[FD00::5]',
+  });
+  await service.startProxy();
+
+  const st = await service.status();
+  assert.equal(st.lanIpOverride, 'fd00::5', 'IPv6 规范表示');
+  assert.equal(st.lanUrl, 'http://[fd00::5]:3081', 'IPv6 字面量必须加方括号');
+  assert.equal(st.lanQr, 'data:qr;http://[fd00::5]:3081', '二维码使用同一 URL');
 
   await service.dispose();
 });
