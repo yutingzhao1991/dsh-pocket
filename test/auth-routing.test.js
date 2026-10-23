@@ -135,14 +135,19 @@ test('review P1：公网直连伪造白名单 Host 不得降级成局域网密�
   assert.equal(tokenForHost('30.174.129.51', '203.0.113.5'), publicToken, '改走公网密码');
   assert.equal(tokenForHost('dsh.dev.example.com', '203.0.113.5'), publicToken);
 
-  // loopback / RFC1918 来源仍可信；非 RFC1918 内网（30.x）由「白名单 IP 所在本机网卡子网」可信
+  // loopback / RFC1918 / 公司内网 30.0.0.0/8 来源直接可信（30/8 不再依赖本机网卡子网）
   assert.equal(isTrustedLanSource('127.0.0.1'), true);
   assert.equal(isTrustedLanSource('192.168.1.9'), true);
   assert.equal(isTrustedLanSource('203.0.113.5'), false, '未授权子网的公网来源不可信');
   assert.equal(isLanHost('30.174.129.51', '127.0.0.1'), true);
   assert.equal(isLanHost('30.174.129.51', '192.168.1.9'), true);
-  assert.equal(isLocalSubnetAddress('30.174.129.60', ['30.174.128.0/19']), true, '同网段来源可信');
-  assert.equal(isLocalSubnetAddress('30.175.1.2', ['30.174.128.0/19']), false, '跨网段来源不可信');
+  // 办公网里电脑与手机常分属不同 /19：整个 30/8 都按局域网来源处理，
+  // 否则从别的 /19 访问白名单入口会被要求输入公网密码（并非密码错误）。
+  assert.equal(isTrustedLanSource('30.175.1.2'), true, '30/8 跨 /19 来源同样可信');
+  assert.equal(isLanHost('30.174.129.51', '30.175.1.2'), true, '其他 /19 的手机命中白名单入口');
+  assert.equal(tokenForHost('30.174.129.51', '30.175.1.2'), lanToken, '应使用局域网密码而不是公网密码');
+  assert.equal(isLocalSubnetAddress('30.174.129.60', ['30.174.128.0/19']), true, '同网段来源落在授权 CIDR 内');
+  assert.equal(isLocalSubnetAddress('30.175.1.2', ['30.174.128.0/19']), false, '跨 /19 地址本身不在该 CIDR 内');
   assert.equal(isIpv4InCidr('30.174.129.60', '30.174.128.0/19'), true);
   assert.equal(isIpv4InCidr('30.175.1.2', '30.174.128.0/19'), false);
 
@@ -157,11 +162,13 @@ test('review P1：公网直连伪造白名单 Host 不得降级成局域网密�
   assert.equal(isTrustedLanSource('203.0.113.20', subnets), false, '未授权的公网网卡子网不可信');
 }));
 
-test('review P2：可信白名单 Host 先于 policyHost 保留，不被 30.x 源地址替换', () => {
-  // `.local` / 单标签名被 classifyHost 判 lan，30.x 来源判 public；若先 policyHost
-  // 就会换成源地址，导致配置的入口失效。
+test('review P2：可信白名单 Host 先于 policyHost 保留，不被来源地址替换', () => {
+  // `.local` / 单标签名被 classifyHost 判 lan，30.x 来源现在同样判 lan，
+  // 两者同级 → Host 原样保留；若先 policyHost 也可能换成源地址，导致配置的入口失效。
   assert.equal(resolvePolicyHost('pocket.local:3081', '30.174.129.60', true), 'pocket.local:3081');
-  assert.equal(resolvePolicyHost('pocket.local:3081', '30.174.129.60', false), '30.174.129.60');
+  assert.equal(resolvePolicyHost('pocket.local:3081', '30.174.129.60', false), 'pocket.local:3081');
+  // 未授权的公网来源仍要改用源地址参与判定（只收紧，不放松）
+  assert.equal(resolvePolicyHost('pocket.local:3081', '203.0.113.5', false), '203.0.113.5');
   // 公网类白名单 Host 不会被 policyHost 改写，但随后仍按公网策略处理（来源不可信）
   assert.equal(resolvePolicyHost('30.174.129.51:3081', '203.0.113.5', false), '30.174.129.51:3081');
 });

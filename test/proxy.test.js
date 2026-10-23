@@ -1088,6 +1088,9 @@ test('issue #90：Host 头不可再伪造成本机——用 TCP 源地址给声�
   assert.equal(classifySource('192.168.1.9'), 'lan');
   assert.equal(classifySource('::ffff:192.168.1.9'), 'lan');
   assert.equal(classifySource('100.101.1.2'), 'lan', 'CGNAT/Tailscale 段算局域网');
+  assert.equal(classifySource('30.174.129.60'), 'lan', '公司内网 30.0.0.0/8 算局域网');
+  assert.equal(classifySource('30.30.1.2'), 'lan', '30/8 的其他 /19 网段同样算局域网');
+  assert.equal(classifySource('31.0.0.1'), 'public', '30/8 之外的 31.x 不受影响');
   assert.equal(classifySource('169.254.1.2'), 'lan', 'IPv4 link-local');
   assert.equal(classifySource('fe80::1'), 'lan');
   assert.equal(classifySource('203.0.113.9'), 'public');
@@ -1111,6 +1114,10 @@ test('issue #90：Host 头不可再伪造成本机——用 TCP 源地址给声�
   assert.equal(
     policyHost(reqFrom('203.0.113.9'), '192.168.1.5:3081'), '203.0.113.9',
     '公网直连伪造私网 Host → 收紧到公网',
+  );
+  assert.equal(
+    policyHost(reqFrom('30.175.1.2'), '127.0.0.1:3081'), '30.175.1.2',
+    '公司内网 30/8 来源伪造本机 Host 同样被拆穿',
   );
 
   // --- 只收紧不放松：cloudflared 从 127.0.0.1 回连，不能把公网降级成本机免密 ---
